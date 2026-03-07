@@ -1,0 +1,70 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build frontend
+        working-directory: ./sau_frontend
+        run: |
+          pnpm install
+          pnpm run build
+
+      - name: Build Python backend
+        run: pyinstaller sau_backend.spec --clean -y
+
+      - name: Create release package
+        run: |
+          mkdir -p release
+          # Copy frontend dist
+          cp -r sau_frontend/dist release/
+          # Copy backend
+          cp -r dist/backend-dist release/
+          # Copy necessary files
+          cp conf.example.py release/
+          cp -r db release/
+          cp -r cookiesFile release/
+          cp -r videoFile release/
+          cp start.bat release/
+          
+      - name: Create zip archive
+        working-directory: ./release
+        shell: pwsh
+        run: |
+          Compress-Archive -Path * -DestinationPath ../SocialAutoUpload-latest-windows.zip
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: SocialAutoUpload-latest-windows.zip
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
