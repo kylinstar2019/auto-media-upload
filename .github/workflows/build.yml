@@ -1,36 +1,59 @@
-name: Build and Release
+name: Build Tauri App
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    branches: [main]
+  release:
+    types: [published]
 
 jobs:
   build:
-    runs-on: windows-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
       - name: Install pnpm
         run: npm install -g pnpm
 
-      - name: Install Python dependencies
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install Rust targets
         run: |
-          pip install -r requirements.txt
-          pip install pyinstaller
+          rustup target add x86_64-pc-windows-msvc
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+          rustup target add x86_64-unknown-linux-gnu
+          rustup target add aarch64-unknown-linux-gnu
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Python dependencies
+        run: pip install pyinstaller
 
       - name: Build frontend
         working-directory: ./sau_frontend
@@ -41,30 +64,30 @@ jobs:
       - name: Build Python backend
         run: pyinstaller sau_backend.spec --clean -y
 
-      - name: Create release package
-        run: |
-          mkdir -p release
-          # Copy frontend dist
-          cp -r sau_frontend/dist release/
-          # Copy backend
-          cp -r dist/backend-dist release/
-          # Copy necessary files
-          cp conf.example.py release/
-          cp -r db release/
-          cp -r cookiesFile release/
-          cp -r videoFile release/
-          cp start.bat release/
-          
-      - name: Create zip archive
-        working-directory: ./release
-        shell: pwsh
-        run: |
-          Compress-Archive -Path * -DestinationPath ../SocialAutoUpload-latest-windows.zip
+      - name: Build Tauri app
+        working-directory: ./sau_frontend
+        run: npm run tauri build -- ${{ matrix.args }}
 
-      - name: Upload Release Asset
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.platform }}
+          path: |
+            sau_frontend/src-tauri/target/release/bundle/**
+            dist/backend-dist/**
+
+  release:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: SocialAutoUpload-latest-windows.zip
-          draft: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: artifacts/**/*
