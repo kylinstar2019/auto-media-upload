@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+src-tauri/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+
+# Backend data
+db/database.db
+cookiesFile/
+videoFile/
+media/
+
+# Large binary files
+*.exe
+*.dll
+*.pyd
+*.zip
+*.7z
+backend-dist/
+releases/
